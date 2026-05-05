@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Runtime data (stays local, not committed)
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+*.err

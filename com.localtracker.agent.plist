@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    LaunchAgent template — do NOT load this file directly.
+    Run  scripts/install.sh  which fills in PYTHON_PATH and REPO_DIR.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.localtracker.agent</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PYTHON_PATH__</string>
+        <string>__REPO_DIR__/main.py</string>
+        <string>start</string>
+    </array>
+
+    <!-- Start automatically when the user logs in. -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart if it crashes (e.g. after a wake from sleep). -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Throttle restarts — launchd will not relaunch more often than once
+         per 10 seconds, which prevents tight crash loops from hammering CPU. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>__DATA_DIR__/launchd.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__DATA_DIR__/launchd.err</string>
+</dict>
+</plist>
