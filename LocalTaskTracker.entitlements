@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Apply this file to the Xcode target:
+      Target → Signing & Capabilities → + Capability → App Sandbox
+      Then set the entitlements file path here.
+
+    Network access is intentionally absent — the app cannot make or receive
+    any network connections when sandboxed with these entitlements.
+-->
+<plist version="1.0">
+<dict>
+    <!-- App Sandbox — enforced by the OS kernel. -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+
+    <!-- Read/write access to the LocalTaskTracker data directory. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+
+    <!--
+        NO network keys present = zero network access.
+        Uncomment the line below ONLY if you need to debug with network tools.
+        <key>com.apple.security.network.client</key><true/>
+    -->
+
+    <!-- Required to read the active application via NSWorkspace. -->
+    <key>com.apple.security.temporary-exception.accessibility</key>
+    <true/>
+</dict>
+</plist>

@@ -1,12 +1,10 @@
 """
 Main polling loop.
 
-Design goals:
-- One DB write per poll; WAL mode keeps it fast.
-- Screenshots taken at SCREENSHOT_INTERVAL, not every poll, to save storage.
+- One DB write per poll; WAL mode keeps it fast and crash-safe.
+- Work-app launches are recorded so the Swift UI can prompt the user.
+- Screenshots are disabled by default (the Swift UI handles them encrypted).
 - Signal-safe shutdown so the last poll is always committed before exit.
-- Elapsed-time correction keeps the real period close to POLL_INTERVAL even
-  when osascript or screencapture take a moment.
 """
 
 import logging
@@ -14,14 +12,21 @@ import signal
 import time
 from datetime import datetime, timezone
 
-from .config import IDLE_THRESHOLD, POLL_INTERVAL, SCREENSHOT_INTERVAL
-from .db import init_db, insert_activity
+from .config import (
+    IDLE_THRESHOLD,
+    POLL_INTERVAL,
+    SCREENSHOT_ENABLED,
+    SCREENSHOT_INTERVAL,
+    WORK_APPS,
+)
+from .db import init_db, insert_activity, insert_launch_event
 from .macos import get_active_app, get_idle_seconds
-from .screenshot import capture
 
 logger = logging.getLogger(__name__)
 
 _running = True
+# Work apps seen since daemon start — prevents duplicate launch events per session.
+_seen_work_apps: set[str] = set()
 
 
 def _handle_signal(signum, _frame):
@@ -36,17 +41,16 @@ def run() -> None:
 
     init_db()
     logger.info(
-        "Tracker started (poll=%ds, screenshot every %ds, idle threshold=%ds)",
+        "Tracker started (poll=%ds, idle_threshold=%ds, screenshots=%s)",
         POLL_INTERVAL,
-        SCREENSHOT_INTERVAL,
         IDLE_THRESHOLD,
+        "on" if SCREENSHOT_ENABLED else "off (Swift UI)",
     )
 
     last_screenshot_ts: float = 0.0
 
     while _running:
         tick_start = time.monotonic()
-
         try:
             last_screenshot_ts = _poll(last_screenshot_ts)
         except Exception:
@@ -72,13 +76,21 @@ def _poll(last_screenshot_ts: float) -> float:
 
     app_name, window_title = get_active_app()
 
+    # Detect work-app launches (once per session per app).
+    if app_name and app_name not in _seen_work_apps and app_name in WORK_APPS:
+        _seen_work_apps.add(app_name)
+        insert_launch_event(ts_str, app_name)
+        logger.info("Work app detected: %s", app_name)
+
+    # Screenshots are handled by the Swift UI unless explicitly enabled.
     screenshot_path: str | None = None
-    now_mono = time.monotonic()
-    if now_mono - last_screenshot_ts >= SCREENSHOT_INTERVAL:
-        screenshot_path = capture(now)
-        if screenshot_path:
-            last_screenshot_ts = now_mono
-            logger.debug("Screenshot → %s", screenshot_path)
+    if SCREENSHOT_ENABLED:
+        now_mono = time.monotonic()
+        if now_mono - last_screenshot_ts >= SCREENSHOT_INTERVAL:
+            from .screenshot import capture
+            screenshot_path = capture(now)
+            if screenshot_path:
+                last_screenshot_ts = now_mono
 
     insert_activity(
         ts_str,
@@ -89,5 +101,4 @@ def _poll(last_screenshot_ts: float) -> float:
         screenshot_path,
     )
     logger.debug("Active: %s | %s", app_name, window_title)
-
     return last_screenshot_ts

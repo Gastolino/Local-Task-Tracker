@@ -1,176 +1,201 @@
 # Local Task Tracker
 
-Lightweight macOS daemon that tracks which applications you use and for how
-long — no cloud, no subscription, just a local SQLite database and low-res
-screenshots.
-
-Built for freelancers who want accurate time records without manually starting
-and stopping timers.
+A private, encrypted macOS activity tracker for freelancers.  Logs which apps
+you use and for how long, captures low-res screenshots, and presents everything
+in a calendar UI — all without a network connection and behind a password you
+set yourself.
 
 ---
 
-## How it works
+## Architecture
 
-Every **5 seconds** the tracker:
+```
+Python daemon  ─────────────────────────────────────────────────────────────
+  Polls active app every 5 s via osascript / IOKit.
+  Detects work-app launches (Photoshop, Teams, etc.) and writes events.
+  Writes to tracker.db (SQLite, WAL mode — safe across lid-close sleep).
+  Screenshots: disabled (handled by Swift app so they can be encrypted).
 
-1. Reads the idle time from IOKit — if you haven't touched the keyboard or
-   mouse for 2 minutes the interval is logged as _idle_ and skipped.
-2. Asks System Events (via `osascript`) for the frontmost application name
-   and window title.
-3. Every **30 seconds** (not every poll) it captures a low-res JPEG screenshot
-   using `screencapture` + `sips` — no third-party libraries.
-4. Writes one row to a local SQLite database with WAL mode, so data is safe
-   even if you close the lid mid-session.
-
-All data lives in `~/Library/Application Support/LocalTaskTracker/`.
+Swift UI app   ─────────────────────────────────────────────────────────────
+  Password lock screen  – PBKDF2-SHA256 (100 k rounds) + AES-256-GCM.
+  Menu bar icon         – start / stop / open tracker.
+  Calendar view         – month heatmap + day timeline + screenshot strip.
+  Work-app prompt       – sheet when Photoshop / Teams / etc. opens.
+  Screenshots           – captured, encrypted, never hit disk as plain JPEG.
+  Network               – zero. App Sandbox with no network entitlements.
+```
 
 ---
 
 ## Requirements
 
-| Requirement | Notes |
+| | Requirement |
 |---|---|
-| macOS 12 Monterey or later | Uses `screencapture`, `sips`, `ioreg`, `osascript` |
-| Python 3.10 or later | Standard library only — no `pip install` needed |
+| **macOS** | 13 Ventura or later |
+| **Python** | 3.10 or later (stdlib only) |
+| **Xcode** | 15 or later (to build the Swift UI app) |
 
 ---
 
-## Installation
+## Quick start
+
+### 1 — Run the Python daemon
 
 ```bash
 git clone https://github.com/gastolino/local-task-tracker.git
 cd local-task-tracker
-bash scripts/install.sh
+bash scripts/install.sh        # installs as a LaunchAgent (starts at login)
 ```
 
-The install script:
-- Locates your `python3` binary
-- Fills in the LaunchAgent plist with the correct paths
-- Loads it so the tracker starts immediately and at every future login
+The daemon immediately starts tracking app usage. No UI yet.
 
-### Permissions
+### 2 — Build the Swift UI app in Xcode
 
-macOS requires two Privacy permissions for whichever app runs the script
-(usually **Terminal** or **iTerm2**).  Grant them in:
+```
+File → Open → select Package.swift in the repo root
+```
 
-**System Settings → Privacy & Security**
+Then in Xcode:
 
-| Permission | What it enables |
+1. Select the **LocalTaskTracker** scheme.
+2. **Signing & Capabilities** → set your Team and Bundle ID.
+3. Add the entitlements file:
+   - Click **+ Capability** → **App Sandbox**.
+   - Set *Entitlements File* to `LocalTaskTracker.entitlements`.
+4. **Build Settings → Info.plist File** → set to
+   `Sources/LocalTaskTracker/Info.plist`.
+5. **Product → Run** (or `⌘R`).
+
+Grant the two permissions macOS will ask for:
+
+| Permission | Where to grant |
 |---|---|
-| **Accessibility** | Reading the active application name and window title |
-| **Screen Recording** | Capturing screenshots |
+| **Accessibility** | System Settings → Privacy & Security → Accessibility |
+| **Screen Recording** | System Settings → Privacy & Security → Screen Recording |
 
-On first run macOS will show a permission prompt automatically.
+### 3 — First launch
+
+A password setup screen appears.  Choose a strong password (≥ 8 chars).
+This password:
+- Is **never stored** — only a PBKDF2 verifier hash lives in the Keychain.
+- Derives the AES-256-GCM key used to encrypt every screenshot.
+- **Cannot be recovered** if forgotten (data is then inaccessible by design).
 
 ---
 
-## Usage
+## Daily use
 
-### Reports
+The app lives in your **menu bar**.  Click the clock icon to:
 
-```bash
-# Today
-python3 main.py report
+| Action | Effect |
+|---|---|
+| **Pause / Resume Recording** | Stop / restart screenshot capture |
+| **Open Tracker** | Opens the calendar window |
+| **Lock & Quit** | Wipes the in-memory key, closes app |
 
-# Specific date
-python3 main.py report --date 2025-05-01
+### Work-app prompts
 
-# Last 7 days
-python3 main.py report --week
+When you open PowerPoint, Photoshop, Illustrator, Teams, Figma, or any other
+configured work app, a sheet appears asking whether to start recording.  Hit
+**Start Recording** and the session begins immediately.
+
+---
+
+## Calendar UI
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  ← May 2025 →                                                    │
+│  Sun   Mon   Tue   Wed   Thu   Fri   Sat                         │
+│                          1     2     3                           │
+│                          ████  ███                               │
+│  4     5     6     7     8     9     10                          │
+│  ██   ████   ███   ─    ████   ██    ─                           │
+├──────────────────────────────────────────────────────────────────┤
+│  Wednesday, 7 May 2025  ·  Active 5h 22m  ·  Idle 48m           │
+│                                                                  │
+│  App Usage                                                       │
+│  ● Xcode         ████████████████████████  2h 14m               │
+│  ● Safari        ████████████████          1h 03m               │
+│  ● Figma         ████████████              55m                   │
+│                                                                  │
+│  Screenshots  (18)                                               │
+│  [09:15] [09:45] [10:15] [10:45] …   ← click to view full-size  │
+│                                                                  │
+│  Timeline                                                        │
+│  09:00  │ Xcode  2h 14m                                          │
+│  11:14  │ Safari  1h 03m                                          │
+│  …                                                               │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-Example output:
+- **Heatmap cells** — greener = more active time that day.
+- **Screenshot thumbnails** — decrypted in memory for display; the `.jpg.enc`
+  files on disk are never readable without your password.
+- **Click any thumbnail** to open a full-size decrypted preview.
 
-```
-────────────────────────────────────────────────────────────
-  Monday, 05 May 2025
-────────────────────────────────────────────────────────────
-  Tracked  6h 10m       Active 5h 22m       Idle 48m
+---
 
-  Application                            Time
-  ────────────────────────────────────── ────────
-  Xcode                                  2h 14m
-  Safari                                 1h 03m
-  Figma                                  55m 30s
-  Terminal                               42m 10s
-  Slack                                  27m 45s
-```
+## Security model
 
-### Run manually (foreground)
+| Layer | Mechanism |
+|---|---|
+| **Password** | PBKDF2-SHA256, 100 000 rounds; only a verifier hash stored in Keychain |
+| **Encryption key** | AES-256-GCM key derived at unlock, held in process memory only |
+| **Screenshots** | Encrypted before `write()` is called — raw JPEG never touches disk |
+| **Database** | Plain SQLite (macOS login + file permissions protect it); future: SQLCipher |
+| **Network** | App Sandbox with no `network.client` or `network.server` entitlement |
+| **Keychain items** | `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` — not in iCloud Keychain |
+| **Lock** | In-memory key is nilled; app reverts to full-screen lock screen |
 
-```bash
-python3 main.py start
-```
-
-Press `Ctrl-C` to stop cleanly.
-
-### Uninstall
-
-```bash
-bash scripts/uninstall.sh
-```
-
-Your data is kept — delete `~/Library/Application Support/LocalTaskTracker/`
-manually if you no longer need it.
+> FileVault (enabled by default on Apple Silicon Macs) encrypts the entire disk,
+> providing the base layer.  The password gate and screenshot encryption add a
+> second, app-specific layer on top.
 
 ---
 
 ## Configuration
 
-Edit `tracker/config.py` and then restart the agent
-(`bash scripts/uninstall.sh && bash scripts/install.sh`).
+### Python daemon — `tracker/config.py`
 
 | Setting | Default | Description |
 |---|---|---|
-| `POLL_INTERVAL` | `5` s | How often to check the active app |
-| `IDLE_THRESHOLD` | `120` s | No input for this long → logged as idle |
-| `SCREENSHOT_INTERVAL` | `30` s | Minimum gap between screenshots |
-| `SCREENSHOT_MAX_DIM` | `480` px | Longest edge of saved screenshots |
-| `SCREENSHOT_QUALITY` | `30` | JPEG quality (0–100; lower = smaller) |
+| `POLL_INTERVAL` | `5` s | App-name poll frequency |
+| `IDLE_THRESHOLD` | `120` s | Input silence before marking idle |
+| `SCREENSHOT_ENABLED` | `False` | Enable only if not using the Swift UI |
+| `WORK_APPS` | (set) | Apps that trigger the recording prompt |
 
-At the defaults a full 8-hour workday produces roughly **30–50 MB** of
-screenshots and a few KB of database.
+### Swift app — `ScreenshotService.swift`
+
+| Property | Default | Description |
+|---|---|---|
+| `interval` | `30` s | Screenshot frequency |
+| Max dimension | `480` px | Longest edge of saved screenshots |
+| JPEG quality | `0.3` | 30 % quality ≈ ~15 KB per frame |
+
+At 30 s intervals over an 8-hour day: **~60 MB** of encrypted screenshots.
 
 ---
 
-## Data layout
-
-```
-~/Library/Application Support/LocalTaskTracker/
-├── tracker.db          SQLite database (WAL mode)
-├── tracker.log         Daemon log
-└── screenshots/
-    └── YYYY-MM-DD/
-        └── HH-MM-SS.jpg
-```
-
-### Database schema
-
-```sql
-CREATE TABLE activity (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts              TEXT    NOT NULL,   -- ISO-8601 UTC timestamp
-    app_name        TEXT,               -- NULL when idle
-    window_title    TEXT,               -- NULL when idle or unavailable
-    idle_secs       REAL    NOT NULL,
-    is_idle         INTEGER NOT NULL,   -- 1 = idle, 0 = active
-    screenshot_path TEXT                -- relative to LocalTaskTracker/, NULL when idle
-);
-```
-
-You can query it directly with any SQLite tool:
+## Uninstall daemon
 
 ```bash
-sqlite3 ~/Library/Application\ Support/LocalTaskTracker/tracker.db \
-  "SELECT app_name, COUNT(*)*5/60.0 AS minutes
-   FROM activity
-   WHERE date(ts)=date('now','localtime') AND is_idle=0
-   GROUP BY app_name ORDER BY minutes DESC;"
+bash scripts/uninstall.sh
 ```
+
+Data lives at `~/Library/Application Support/LocalTaskTracker/`.
+Delete that directory to remove everything.
+
+---
+
+## Adding work apps
+
+Edit the `WORK_APPS` set in `tracker/config.py` **and** the same set in
+`Sources/LocalTaskTracker/Services/AppMonitorService.swift`, then rebuild.
 
 ---
 
 ## Privacy
 
-All data stays on your machine.  No analytics, no network calls, no external
-dependencies beyond what ships with macOS.
+No telemetry. No network calls. No external dependencies beyond macOS system
+frameworks and the Python standard library.  Everything stays on your machine.

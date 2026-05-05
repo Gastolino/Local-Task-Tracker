@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Add this file to your Xcode target's Info.plist settings.
+    In Xcode: Target → Build Settings → Info.plist File → point here.
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Local Task Tracker</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>com.localtracker.app</string>
+
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <!-- Hides the Dock icon — the app lives in the menu bar. -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <!-- Required for Screen Recording permission prompt. -->
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Local Task Tracker captures low-resolution screenshots to document your work sessions. Images are encrypted and never leave your device.</string>
+
+    <!-- Required for Accessibility permission prompt. -->
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Local Task Tracker reads the name of the active application to track your work sessions.</string>
+
+    <!-- Disable App Transport Security — this app makes zero network requests. -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <false/>
+    </dict>
+</dict>
+</plist>

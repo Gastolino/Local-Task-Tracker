@@ -14,6 +14,24 @@ CREATE TABLE IF NOT EXISTS activity (
     screenshot_path TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity(ts);
+
+-- Fired when a known work app first becomes active in a daemon session.
+-- The Swift UI reads this table and shows a "Start recording?" prompt.
+CREATE TABLE IF NOT EXISTS app_launch_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          TEXT    NOT NULL,
+    app_name    TEXT    NOT NULL,
+    prompted    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_launch_ts ON app_launch_events(ts);
+
+-- Screenshots written by the Swift UI app (AES-GCM encrypted .jpg.enc files).
+CREATE TABLE IF NOT EXISTS screenshots (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts      TEXT    NOT NULL,
+    path    TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_screenshot_ts ON screenshots(ts);
 """
 
 
@@ -27,9 +45,7 @@ def init_db() -> None:
 def _connect():
     conn = sqlite3.connect(str(DB_PATH), timeout=10)
     conn.row_factory = sqlite3.Row
-    # WAL mode: readers never block writers; safe across sudden sleep.
     conn.execute("PRAGMA journal_mode=WAL")
-    # NORMAL: durable enough for sleep events without fsync on every write.
     conn.execute("PRAGMA synchronous=NORMAL")
     try:
         yield conn
@@ -57,6 +73,14 @@ def insert_activity(
             VALUES (?, ?, ?, ?, ?, ?)
             """,
             (ts, app_name, window_title, idle_secs, int(is_idle), screenshot_path),
+        )
+
+
+def insert_launch_event(ts: str, app_name: str) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "INSERT INTO app_launch_events (ts, app_name) VALUES (?, ?)",
+            (ts, app_name),
         )
 
 
