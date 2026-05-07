@@ -3,6 +3,8 @@ import SQLite3
 
 /// Reads from the SQLite database written by the Python daemon.
 /// The Swift app also writes to the `screenshots` table.
+/// Project/session/note tables are created here so they exist before
+/// ProjectService opens its own connection.
 final class DatabaseService {
 
     static let shared = DatabaseService()
@@ -10,34 +12,54 @@ final class DatabaseService {
 
     private var db: OpaquePointer?
 
-    private static let dbPath: String = {
-        let dir = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first!.appendingPathComponent("LocalTaskTracker")
-        try? FileManager.default.createDirectory(
-            at: dir, withIntermediateDirectories: true
-        )
-        return dir.appendingPathComponent("tracker.db").path
-    }()
-
     // MARK: - Connection
 
     private func open() {
-        guard sqlite3_open(Self.dbPath, &db) == SQLITE_OK else { return }
+        guard sqlite3_open(AppPaths.dbPath, &db) == SQLITE_OK else { return }
         sqlite3_exec(db, "PRAGMA journal_mode=WAL",   nil, nil, nil)
         sqlite3_exec(db, "PRAGMA synchronous=NORMAL", nil, nil, nil)
-        createScreenshotsTableIfNeeded()
+        sqlite3_exec(db, "PRAGMA foreign_keys=ON",    nil, nil, nil)
+        createTablesIfNeeded()
     }
 
-    private func createScreenshotsTableIfNeeded() {
-        sqlite3_exec(db,
-            """
+    private func createTablesIfNeeded() {
+        sqlite3_exec(db, """
             CREATE TABLE IF NOT EXISTS screenshots (
                 id   INTEGER PRIMARY KEY AUTOINCREMENT,
                 ts   TEXT NOT NULL,
                 path TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_screenshot_ts ON screenshots(ts);
+
+            CREATE TABLE IF NOT EXISTS projects (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name        TEXT    NOT NULL,
+                color       TEXT    NOT NULL DEFAULT '#5856D6',
+                description TEXT,
+                created_at  TEXT    NOT NULL,
+                archived    INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS sessions (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                label       TEXT,
+                started_at  TEXT    NOT NULL,
+                ended_at    TEXT,
+                notes       TEXT,
+                created_at  TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
+            CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at);
+
+            CREATE TABLE IF NOT EXISTS project_notes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                content     TEXT    NOT NULL,
+                created_at  TEXT    NOT NULL,
+                updated_at  TEXT    NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_notes_project ON project_notes(project_id);
             """,
             nil, nil, nil
         )
@@ -45,9 +67,8 @@ final class DatabaseService {
 
     deinit { sqlite3_close(db) }
 
-    // MARK: - Queries
+    // MARK: - Activity queries
 
-    /// All activity rows for a specific local date ("yyyy-MM-dd").
     func activities(for date: Date) -> [ActivityRecord] {
         let key = localDateKey(date)
         return queryActivities(
@@ -56,7 +77,6 @@ final class DatabaseService {
         )
     }
 
-    /// Day-level summaries for every day in a given month.
     func monthActivities(year: Int, month: Int) -> [DayActivity] {
         let y = String(format: "%04d", year)
         let m = String(format: "%02d", month)
@@ -84,9 +104,7 @@ final class DatabaseService {
                 let appsRaw    = string(stmt, 3) ?? ""
                 guard let date = fmt.date(from: day) else { continue }
                 let apps = appsRaw.split(separator: ",")
-                    .map(String.init)
-                    .filter { !$0.isEmpty }
-                    .prefix(3)
+                    .map(String.init).filter { !$0.isEmpty }.prefix(3)
                 results.append(DayActivity(
                     id: day, date: date,
                     activePolls: active, idlePolls: idle,
@@ -97,7 +115,6 @@ final class DatabaseService {
         return results
     }
 
-    /// Screenshots for a specific local date.
     func screenshots(for date: Date) -> [ScreenshotRecord] {
         let key = localDateKey(date)
         let sql = "SELECT id,ts,path FROM screenshots " +
@@ -105,17 +122,16 @@ final class DatabaseService {
         var results: [ScreenshotRecord] = []
         withStatement(sql) { stmt in
             while sqlite3_step(stmt) == SQLITE_ROW {
-                let id   = Int(sqlite3_column_int64(stmt, 0))
-                let tsStr = string(stmt, 1) ?? ""
-                let path  = string(stmt, 2) ?? ""
-                let ts    = isoDate(tsStr) ?? Date()
-                results.append(ScreenshotRecord(id: id, ts: ts, path: path))
+                results.append(ScreenshotRecord(
+                    id:   Int(sqlite3_column_int64(stmt, 0)),
+                    ts:   isoDate(string(stmt, 1) ?? "") ?? Date(),
+                    path: string(stmt, 2) ?? ""
+                ))
             }
         }
         return results
     }
 
-    /// Unread work-app launch events (so the UI can prompt the user).
     func pendingLaunchEvents() -> [(id: Int, appName: String)] {
         let sql = "SELECT id,app_name FROM app_launch_events WHERE prompted=0 ORDER BY ts"
         var results: [(Int, String)] = []
@@ -133,15 +149,13 @@ final class DatabaseService {
         }
     }
 
-    /// Today's summary for the menu bar.
     func todaySummary() -> (activeSeconds: TimeInterval, appCount: Int) {
         let key = localDateKey(Date())
         let sql = """
             SELECT
                 SUM(CASE WHEN is_idle=0 THEN 1 ELSE 0 END),
                 COUNT(DISTINCT CASE WHEN is_idle=0 THEN app_name END)
-            FROM activity
-            WHERE date(ts,'localtime')='\(key)'
+            FROM activity WHERE date(ts,'localtime')='\(key)'
             """
         var active = 0; var count = 0
         withStatement(sql) { stmt in
@@ -153,7 +167,7 @@ final class DatabaseService {
         return (Double(active) * 5, count)
     }
 
-    // MARK: - Writes
+    // MARK: - Screenshot writes
 
     func insertScreenshot(ts: Date, path: String) {
         let tsStr = isoFormatter.string(from: ts)
@@ -168,16 +182,14 @@ final class DatabaseService {
         var results: [ActivityRecord] = []
         withStatement(sql) { stmt in
             while sqlite3_step(stmt) == SQLITE_ROW {
-                let id    = Int(sqlite3_column_int64(stmt, 0))
-                let ts    = isoDate(string(stmt, 1) ?? "") ?? Date()
-                let app   = string(stmt, 2)
-                let win   = string(stmt, 3)
-                let idle  = sqlite3_column_double(stmt, 4)
-                let isIdle = sqlite3_column_int64(stmt, 5) != 0
-                let sPath = string(stmt, 6)
                 results.append(ActivityRecord(
-                    id: id, ts: ts, appName: app, windowTitle: win,
-                    idleSecs: idle, isIdle: isIdle, screenshotPath: sPath
+                    id:             Int(sqlite3_column_int64(stmt, 0)),
+                    ts:             isoDate(string(stmt, 1) ?? "") ?? Date(),
+                    appName:        string(stmt, 2),
+                    windowTitle:    string(stmt, 3),
+                    idleSecs:       sqlite3_column_double(stmt, 4),
+                    isIdle:         sqlite3_column_int64(stmt, 5) != 0,
+                    screenshotPath: string(stmt, 6)
                 ))
             }
         }
@@ -197,8 +209,7 @@ final class DatabaseService {
 
     private func localDateKey(_ date: Date) -> String {
         let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = .current
+        f.dateFormat = "yyyy-MM-dd"; f.timeZone = .current
         return f.string(from: date)
     }
 
@@ -209,7 +220,6 @@ final class DatabaseService {
     }()
 
     private func isoDate(_ s: String) -> Date? {
-        isoFormatter.date(from: s)
-            ?? ISO8601DateFormatter().date(from: s)
+        isoFormatter.date(from: s) ?? ISO8601DateFormatter().date(from: s)
     }
 }
