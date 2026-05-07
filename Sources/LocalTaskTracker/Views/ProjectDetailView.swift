@@ -48,21 +48,19 @@ struct ProjectDetailView: View {
     private var statsHeader: some View {
         HStack(spacing: 0) {
             statCell("Total", fmt(stats.totalSeconds))
-            Divider().frame(height: 40)
+            Divider().frame(height: 32)
             statCell("This week", fmt(stats.thisWeekSeconds))
-            Divider().frame(height: 40)
+            Divider().frame(height: 32)
             statCell("Today", fmt(stats.todaySeconds))
-            Divider().frame(height: 40)
+            Divider().frame(height: 32)
             statCell("Sessions", "\(stats.sessionCount)")
         }
-        .padding(16)
-        .background(Color(hex: project.color).opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: project.color).opacity(0.2)))
+        .padding(.vertical, 12)
     }
 
     private func statCell(_ title: String, _ value: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value).font(.title3.bold())
+        VStack(spacing: 3) {
+            Text(value).font(.title3.weight(.semibold))
             Text(title).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -73,15 +71,17 @@ struct ProjectDetailView: View {
     private var sessionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Sessions").font(.headline)
+                Text("SESSIONS")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Spacer()
                 Button {
                     showSession = true
                 } label: {
-                    Label("New Session", systemImage: "plus")
-                        .font(.subheadline)
+                    Image(systemName: "plus")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderless)
             }
 
             if sessions.isEmpty {
@@ -102,18 +102,19 @@ struct ProjectDetailView: View {
 
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Notes").font(.headline)
+            Text("NOTES")
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
 
-            // Inline new-note composer
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 TextEditor(text: $newNote)
                     .font(.body)
-                    .frame(minHeight: 60)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.gray.opacity(0.25)))
+                    .frame(minHeight: 56)
+                    .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
                 HStack {
                     Spacer()
                     Button("Add Note") { addNote() }
                         .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
                         .disabled(newNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
@@ -211,17 +212,18 @@ struct SessionRow: View {
             Spacer()
 
             // Actions
-            HStack(spacing: 4) {
+            HStack(spacing: 12) {
                 Button("Edit", action: onEdit)
-                    .buttonStyle(.bordered).controlSize(.small)
+                    .buttonStyle(.borderless).controlSize(.small)
+                    .foregroundStyle(.secondary)
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
-                .buttonStyle(.bordered).controlSize(.small)
+                .buttonStyle(.borderless).controlSize(.small)
+                .foregroundStyle(.secondary)
             }
         }
-        .padding(12)
-        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.vertical, 8)
     }
 
     private func fmtDuration(_ s: TimeInterval) -> String {
@@ -247,7 +249,7 @@ struct NoteRow: View {
                 TextEditor(text: $draft)
                     .font(.body)
                     .frame(minHeight: 60)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.accentColor.opacity(0.4)))
+                    .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
                 HStack {
                     Button("Cancel") { editing = false }
                         .buttonStyle(.bordered).controlSize(.small)
@@ -282,8 +284,7 @@ struct NoteRow: View {
                     .font(.caption2).foregroundStyle(.tertiary)
             }
         }
-        .padding(10)
-        .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.vertical, 6)
     }
 }
 

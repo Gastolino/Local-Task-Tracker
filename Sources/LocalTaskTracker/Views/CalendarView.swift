@@ -20,7 +20,6 @@ struct CalendarView: View {
                 weekdayRow
                 dayGrid
                 Spacer()
-                lockButton
             }
             .padding(20)
             .frame(width: 320)
@@ -89,18 +88,6 @@ struct CalendarView: View {
                 .onTapGesture { selectedDate = date }
             }
         }
-    }
-
-    private var lockButton: some View {
-        Button(role: .destructive) {
-            ScreenshotService.shared.stop()
-            appState.lock()
-        } label: {
-            Label("Lock", systemImage: "lock.fill")
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        .tint(.secondary)
     }
 
     // MARK: - Helpers
@@ -179,9 +166,8 @@ struct DayCellView: View {
     private var cellBackground: Color {
         if isSelected { return .accentColor }
         guard let a = activity, a.intensity > 0 else {
-            return Color.gray.opacity(0.08)
+            return Color.clear
         }
-        // Green heatmap: lighter → darker as intensity grows.
-        return Color.green.opacity(0.15 + a.intensity * 0.75)
+        return Color.accentColor.opacity(0.12 + a.intensity * 0.55)
     }
 }

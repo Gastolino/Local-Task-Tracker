@@ -59,10 +59,11 @@ struct DayDetailView: View {
             Button {
                 showNewSession = true
             } label: {
-                Label("Session", systemImage: "plus")
-                    .font(.subheadline)
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderless)
         }
         .padding(20)
     }
@@ -71,7 +72,8 @@ struct DayDetailView: View {
 
     private var appBars: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Apps").font(.headline)
+            Text("APPS")
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             ForEach(appTotals) { total in
                 HStack(spacing: 10) {
                     Circle().fill(total.appName.trackingColor)
@@ -101,7 +103,8 @@ struct DayDetailView: View {
 
     private var sessionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Sessions").font(.headline)
+            Text("SESSIONS")
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             ForEach(daySessions) { session in
                 HStack(spacing: 10) {
                     Circle().fill(Color(hex: session.projectColor)).frame(width: 8, height: 8)
@@ -122,7 +125,8 @@ struct DayDetailView: View {
 
     private var screenshotStrip: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Screenshots  (\(screenshots.count))").font(.headline)
+            Text("SCREENSHOTS  (\(screenshots.count))")
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(screenshots) { shot in
@@ -139,7 +143,8 @@ struct DayDetailView: View {
 
     private var timeline: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Timeline").font(.headline)
+            Text("TIMELINE")
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             ForEach(appBlocks) { block in
                 HStack(spacing: 10) {
                     Text(block.start, format: .dateTime.hour().minute())

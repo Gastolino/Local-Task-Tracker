@@ -134,7 +134,6 @@ struct ContentView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color(hex: session.project.color).opacity(0.1), in: Capsule())
-        .overlay(Capsule().stroke(Color(hex: session.project.color).opacity(0.25)))
+        .background(Color.primary.opacity(0.06), in: Capsule())
     }
 }

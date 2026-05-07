@@ -131,16 +131,12 @@ struct MenuBarView: View {
     }
 
     private var todaySection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("TODAY")
-                .font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
-            HStack {
-                Label(fmt(summary.activeSeconds), systemImage: "clock.fill")
-                    .font(.caption)
-                Spacer()
-                Text("\(summary.appCount) apps")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+        HStack {
+            Text(fmt(summary.activeSeconds))
+                .font(.caption)
+            Spacer()
+            Text("\(summary.appCount) apps")
+                .font(.caption).foregroundStyle(.secondary)
         }
         .opacity(appState.isLocked ? 0.4 : 1)
     }
@@ -154,8 +150,7 @@ struct MenuBarView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(tint)
-        .padding(.vertical, 4).padding(.horizontal, 6)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+        .padding(.vertical, 5).padding(.horizontal, 2)
     }
 
     private func openMainWindow() {
