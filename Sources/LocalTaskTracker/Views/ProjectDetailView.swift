@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Detail view for a single project: stats header, scope, sessions list, project notes.
+/// Detail view for a single project: stats, scope, sessions, notes.
 struct ProjectDetailView: View {
 
     var project: Project
@@ -12,7 +12,6 @@ struct ProjectDetailView: View {
     @State private var showSession  = false
     @State private var editSession: Session?
     @State private var newNote      = ""
-    @State private var editNote:    ProjectNote?
     @State private var editProject  = false
 
     var body: some View {
@@ -74,8 +73,7 @@ struct ProjectDetailView: View {
     @ViewBuilder
     private var scopeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("SCOPE")
-                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text("SCOPE").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
 
             if let allocated = project.allocatedHours, allocated > 0 {
                 let actual   = stats.totalSeconds / 3600
@@ -98,7 +96,7 @@ struct ProjectDetailView: View {
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     if isOver {
-                        Text(String(format: "+%.1fh over scope (%.0fh allocated)", actual - allocated, allocated))
+                        Text(String(format: "+%.1fh over (%.0fh allocated)", actual - allocated, allocated))
                             .font(.caption).foregroundStyle(.red)
                     } else {
                         Text(String(format: "%.1fh remaining (%.0fh allocated)", allocated - actual, allocated))
@@ -114,8 +112,7 @@ struct ProjectDetailView: View {
                     to:   Calendar.current.startOfDay(for: deadline)
                 ).day ?? 0
                 HStack(spacing: 6) {
-                    Text("Deadline")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Text("Deadline").font(.caption).foregroundStyle(.secondary)
                     Text(deadline, format: .dateTime.day().month(.abbreviated).year())
                         .font(.caption.weight(.medium))
                     Spacer()
@@ -136,27 +133,21 @@ struct ProjectDetailView: View {
     private var sessionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("SESSIONS")
-                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text("SESSIONS").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Spacer()
-                Button {
-                    showSession = true
-                } label: {
+                Button { showSession = true } label: {
                     Image(systemName: "plus")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
                 }
                 .buttonStyle(.borderless)
             }
-
             if sessions.isEmpty {
                 Text("No sessions yet. Add one to start tracking time for this project.")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .padding(.vertical, 8)
+                    .font(.callout).foregroundStyle(.secondary).padding(.vertical, 8)
             } else {
                 ForEach(sessions) { session in
                     SessionRow(session: session,
-                               onEdit: { editSession = session },
+                               onEdit:   { editSession = session },
                                onDelete: { deleteSession(session) })
                 }
             }
@@ -167,33 +158,22 @@ struct ProjectDetailView: View {
 
     private var notesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("NOTES")
-                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-
+            Text("NOTES").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 6) {
                 TextEditor(text: $newNote)
-                    .font(.body)
-                    .frame(minHeight: 56)
+                    .font(.body).frame(minHeight: 56)
                     .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
                 HStack {
                     Spacer()
                     Button("Add Note") { addNote() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
+                        .buttonStyle(.borderedProminent).controlSize(.small)
                         .disabled(newNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-
             ForEach(notes) { note in
                 NoteRow(note: note,
-                        onSave: { updated in
-                            ProjectService.shared.updateNote(updated)
-                            reload()
-                        },
-                        onDelete: {
-                            ProjectService.shared.deleteNote(note.id)
-                            reload()
-                        })
+                        onSave: { updated in ProjectService.shared.updateNote(updated); reload() },
+                        onDelete: { ProjectService.shared.deleteNote(note.id); reload() })
             }
         }
     }
@@ -210,13 +190,11 @@ struct ProjectDetailView: View {
         let trimmed = newNote.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         ProjectService.shared.addNote(content: trimmed, projectID: project.id)
-        newNote = ""
-        reload()
+        newNote = ""; reload()
     }
 
     private func deleteSession(_ session: Session) {
-        ProjectService.shared.deleteSession(session.id)
-        reload()
+        ProjectService.shared.deleteSession(session.id); reload()
     }
 
     private func fmt(_ s: TimeInterval) -> String {
@@ -235,7 +213,6 @@ struct SessionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Date column
             VStack(alignment: .trailing, spacing: 2) {
                 Text(session.startedAt, format: .dateTime.month(.abbreviated).day())
                     .font(.caption.weight(.semibold))
@@ -244,13 +221,10 @@ struct SessionRow: View {
             }
             .frame(width: 52)
 
-            // Duration bar
             RoundedRectangle(cornerRadius: 3)
-                .fill(Color(hex: session.projectColor))
-                .frame(width: 4)
+                .fill(Color(hex: session.projectColor)).frame(width: 4)
                 .frame(height: max(28, min(CGFloat(session.duration / 60) * 0.8, 80)))
 
-            // Info
             VStack(alignment: .leading, spacing: 2) {
                 if let lbl = session.label, !lbl.isEmpty {
                     Text(lbl).font(.subheadline.weight(.medium))
@@ -260,32 +234,23 @@ struct SessionRow: View {
                         .font(.caption).foregroundStyle(.secondary)
                     if session.isActive {
                         Text("Active")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.green)
+                            .font(.caption2.weight(.semibold)).foregroundStyle(.green)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(.green.opacity(0.12), in: Capsule())
                     }
                 }
                 if let notes = session.notes, !notes.isEmpty {
-                    Text(notes)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                    Text(notes).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
 
             Spacer()
 
-            // Actions
             HStack(spacing: 12) {
                 Button("Edit", action: onEdit)
-                    .buttonStyle(.borderless).controlSize(.small)
-                    .foregroundStyle(.secondary)
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless).controlSize(.small)
-                .foregroundStyle(.secondary)
+                    .buttonStyle(.borderless).controlSize(.small).foregroundStyle(.secondary)
+                Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
+                    .buttonStyle(.borderless).controlSize(.small).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 8)
@@ -311,38 +276,27 @@ struct NoteRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if editing {
-                TextEditor(text: $draft)
-                    .font(.body)
-                    .frame(minHeight: 60)
+                TextEditor(text: $draft).font(.body).frame(minHeight: 60)
                     .background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 6))
                 HStack {
-                    Button("Cancel") { editing = false }
-                        .buttonStyle(.bordered).controlSize(.small)
+                    Button("Cancel") { editing = false }.buttonStyle(.bordered).controlSize(.small)
                     Spacer()
                     Button("Save") {
-                        var updated = note
-                        updated.content = draft
-                        onSave(updated)
-                        editing = false
+                        var updated = note; updated.content = draft
+                        onSave(updated); editing = false
                     }
                     .buttonStyle(.borderedProminent).controlSize(.small)
                 }
             } else {
                 HStack(alignment: .top, spacing: 8) {
-                    Text(note.content)
-                        .font(.body)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
+                    Text(note.content).font(.body).frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 4) {
                         Button { draft = note.content; editing = true } label: {
                             Image(systemName: "pencil")
                         }
                         .buttonStyle(.borderless).controlSize(.small)
-
-                        Button(role: .destructive, action: onDelete) {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless).controlSize(.small)
+                        Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
+                            .buttonStyle(.borderless).controlSize(.small)
                     }
                 }
                 Text(note.updatedAt, format: .dateTime.month().day().hour().minute())
@@ -366,48 +320,100 @@ struct EditProjectView: View {
     @State private var deadlineEnabled    = false
     @State private var deadline           = Date().addingTimeInterval(30 * 86400)
     @State private var allocatedHoursText = ""
+    @State private var iconType           = IconPickerType.letter
+    @State private var iconEmoji          = ""
+    @State private var iconColor          = Project.presetColors[0]
+    @State private var iconImagePath:     String? = nil
+    @State private var showImagePicker    = false
+    @State private var showDeleteAlert    = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Edit Project").font(.title2.bold())
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Edit Project").font(.title2.bold())
+                Spacer()
+                Button(role: .destructive) { showDeleteAlert = true } label: {
+                    Label("Delete", systemImage: "trash")
+                        .font(.subheadline)
+                        .foregroundStyle(.red)
+                }
+                .buttonStyle(.borderless)
+            }
 
-            TextField("Project name", text: $name).textFieldStyle(.roundedBorder)
+            // Preview + Name
+            HStack(spacing: 14) {
+                iconPreviewView(
+                    name: name, color: color,
+                    iconType: iconType, iconEmoji: iconEmoji,
+                    iconColor: iconColor, iconImagePath: iconImagePath,
+                    size: 52
+                )
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Project name").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                    TextField("Project name", text: $name).textFieldStyle(.roundedBorder)
+                }
+            }
 
             TextField("Description (optional)", text: $description, axis: .vertical)
                 .textFieldStyle(.roundedBorder).lineLimit(3, reservesSpace: true)
 
-            HStack(spacing: 10) {
-                ForEach(Project.presetColors, id: \.self) { hex in
-                    Circle().fill(Color(hex: hex)).frame(width: 26, height: 26)
-                        .overlay(Circle().stroke(Color.primary.opacity(0.2), lineWidth: 1))
-                        .overlay(
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
-                                .opacity(color == hex ? 1 : 0)
-                        )
-                        .onTapGesture { color = hex }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Project colour").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                colorSwatches(selected: $color)
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Icon").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                Picker("Icon", selection: $iconType) {
+                    Text("Letter").tag(IconPickerType.letter)
+                    Text("Emoji").tag(IconPickerType.emoji)
+                    Text("Image").tag(IconPickerType.image)
+                }
+                .pickerStyle(.segmented).frame(maxWidth: 260)
+
+                switch iconType {
+                case .letter:
+                    EmptyView()
+                case .emoji:
+                    HStack(spacing: 12) {
+                        TextField("Emoji", text: $iconEmoji).textFieldStyle(.roundedBorder)
+                            .frame(width: 58)
+                            .onChange(of: iconEmoji) { v in
+                                if v.count > 1 { iconEmoji = String(v.prefix(1)) }
+                            }
+                        colorSwatches(selected: $iconColor)
+                    }
+                case .image:
+                    HStack(spacing: 10) {
+                        if let path = iconImagePath {
+                            Text(URL(fileURLWithPath: path).lastPathComponent)
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            Button("Remove") { iconImagePath = nil }
+                                .buttonStyle(.borderless).controlSize(.small).foregroundStyle(.red)
+                        } else {
+                            Button("Choose Image…") { showImagePicker = true }
+                                .buttonStyle(.bordered).controlSize(.small)
+                        }
+                    }
                 }
             }
 
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Allocated Hours").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
-                    TextField("e.g. 40", text: $allocatedHoursText)
-                        .textFieldStyle(.roundedBorder)
+                    TextField("e.g. 40", text: $allocatedHoursText).textFieldStyle(.roundedBorder)
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Deadline", isOn: $deadlineEnabled)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                     if deadlineEnabled {
-                        DatePicker("", selection: $deadline, displayedComponents: .date)
-                            .labelsHidden()
+                        DatePicker("", selection: $deadline, displayedComponents: .date).labelsHidden()
                     }
                 }
             }
 
             Spacer()
+
             HStack {
                 Button("Cancel") { dismiss() }.buttonStyle(.bordered).keyboardShortcut(.escape)
                 Spacer()
@@ -418,16 +424,35 @@ struct EditProjectView: View {
             }
         }
         .padding(28)
-        .frame(width: 420, height: 400)
-        .onAppear {
-            name        = project.name
-            description = project.description ?? ""
-            color       = project.color
-            allocatedHoursText = project.allocatedHours.map { String(format: "%.0f", $0) } ?? ""
-            if let d = project.deadline {
-                deadlineEnabled = true
-                deadline        = d
+        .frame(width: 460, height: 580)
+        .onAppear { populate() }
+        .fileImporter(isPresented: $showImagePicker, allowedContentTypes: [.image]) { result in
+            if case .success(let url) = result { iconImagePath = copyIconImage(url) }
+        }
+        .alert("Delete \"\(project.name)\"?", isPresented: $showDeleteAlert) {
+            Button("Delete", role: .destructive) {
+                ProjectService.shared.deleteProject(project.id)
+                dismiss()
             }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently delete the project, all its sessions, notes, invoices and offers. This cannot be undone.")
+        }
+    }
+
+    private func populate() {
+        name        = project.name
+        description = project.description ?? ""
+        color       = project.color
+        allocatedHoursText = project.allocatedHours.map { String(format: "%.0f", $0) } ?? ""
+        if let d = project.deadline { deadlineEnabled = true; deadline = d }
+        if let emoji = project.iconEmoji, !emoji.isEmpty {
+            iconType  = .emoji
+            iconEmoji = emoji
+            iconColor = project.iconColor ?? project.color
+        } else if project.iconImagePath != nil {
+            iconType      = .image
+            iconImagePath = project.iconImagePath
         }
     }
 
@@ -438,6 +463,9 @@ struct EditProjectView: View {
         updated.description    = description.isEmpty ? nil : description
         updated.deadline       = deadlineEnabled ? deadline : nil
         updated.allocatedHours = Double(allocatedHoursText.trimmingCharacters(in: .whitespaces))
+        updated.iconEmoji      = iconType == .emoji ? (iconEmoji.isEmpty ? nil : iconEmoji) : nil
+        updated.iconColor      = iconType == .emoji ? iconColor : nil
+        updated.iconImagePath  = iconType == .image ? iconImagePath : nil
         ProjectService.shared.updateProject(updated)
         onSaved(updated)
         dismiss()

@@ -11,6 +11,9 @@ struct Project: Identifiable, Hashable {
     var isArchived: Bool
     var deadline: Date?
     var allocatedHours: Double?
+    var iconEmoji: String?
+    var iconColor: String?     // hex for emoji background; nil = use project color
+    var iconImagePath: String? // absolute path to copied image file
 
     static let presetColors: [String] = [
         "#5856D6", "#007AFF", "#34C759", "#FF9500",
@@ -90,6 +93,7 @@ struct Invoice: Identifiable {
     var issuedDate: Date
     var dueDate: Date?
     var notes: String?
+    var filePath: String?      // attached PDF or document
     let createdAt: Date
 
     var isOverdue: Bool {

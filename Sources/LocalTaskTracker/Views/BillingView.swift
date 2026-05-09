@@ -251,6 +251,15 @@ struct InvoiceRow: View {
 
             InvoiceStatusBadge(status: invoice.status, isOverdue: invoice.isOverdue)
 
+            if invoice.filePath != nil {
+                Button { openFile(invoice.filePath) } label: {
+                    Image(systemName: "paperclip")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("Open attached document")
+            }
+
             HStack(spacing: 8) {
                 Button("Edit", action: onEdit)
                     .buttonStyle(.borderless).controlSize(.small).foregroundStyle(.secondary)
@@ -261,6 +270,11 @@ struct InvoiceRow: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private func openFile(_ path: String?) {
+        guard let path = path else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
     }
 }
 
@@ -355,12 +369,14 @@ struct InvoiceEditorView: View {
     @State private var hasDueDate         = false
     @State private var dueDate            = Date().addingTimeInterval(30 * 86400)
     @State private var notes              = ""
+    @State private var filePath:          String?       = nil
+    @State private var showFilePicker     = false
     @State private var errorMsg           = ""
 
     private let currencies = ["USD", "EUR", "GBP", "CAD", "AUD", "CHF"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             Text(existing == nil ? "New Invoice" : "Edit Invoice")
                 .font(.title2.bold())
 
@@ -405,15 +421,16 @@ struct InvoiceEditorView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                label("Issued Date")
-                DatePicker("", selection: $issuedDate, displayedComponents: .date).labelsHidden()
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle("Set due date", isOn: $hasDueDate).font(.subheadline)
-                if hasDueDate {
-                    DatePicker("", selection: $dueDate, displayedComponents: .date).labelsHidden()
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    label("Issued Date")
+                    DatePicker("", selection: $issuedDate, displayedComponents: .date).labelsHidden()
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Due Date", isOn: $hasDueDate).font(.subheadline)
+                    if hasDueDate {
+                        DatePicker("", selection: $dueDate, displayedComponents: .date).labelsHidden()
+                    }
                 }
             }
 
@@ -421,6 +438,25 @@ struct InvoiceEditorView: View {
                 label("Notes (optional)")
                 TextField("Additional notes…", text: $notes, axis: .vertical)
                     .textFieldStyle(.roundedBorder).lineLimit(3, reservesSpace: true)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                label("Invoice PDF / Document")
+                HStack(spacing: 8) {
+                    if let path = filePath {
+                        Image(systemName: "doc.fill").foregroundStyle(.secondary)
+                        Text(URL(fileURLWithPath: path).lastPathComponent)
+                            .font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer()
+                        Button("Open")   { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+                            .buttonStyle(.borderless).controlSize(.small)
+                        Button("Remove") { filePath = nil }
+                            .buttonStyle(.borderless).controlSize(.small).foregroundStyle(.red)
+                    } else {
+                        Button("Attach PDF or Document…") { showFilePicker = true }
+                            .buttonStyle(.bordered).controlSize(.small)
+                    }
+                }
             }
 
             if !errorMsg.isEmpty {
@@ -438,8 +474,12 @@ struct InvoiceEditorView: View {
             }
         }
         .padding(28)
-        .frame(width: 440, height: 580)
+        .frame(width: 460, height: 620)
         .onAppear { setup() }
+        .fileImporter(isPresented: $showFilePicker,
+                      allowedContentTypes: [.pdf, .data, .item]) { result in
+            if case .success(let url) = result { filePath = url.path }
+        }
     }
 
     private func setup() {
@@ -452,6 +492,7 @@ struct InvoiceEditorView: View {
             status     = inv.status
             issuedDate = inv.issuedDate
             notes      = inv.notes ?? ""
+            filePath   = inv.filePath
             if let due = inv.dueDate { hasDueDate = true; dueDate = due }
         } else {
             selectedProjectID = projects.first?.id
@@ -479,6 +520,7 @@ struct InvoiceEditorView: View {
             updated.issuedDate = issuedDate
             updated.dueDate    = hasDueDate ? dueDate : nil
             updated.notes      = notes.isEmpty ? nil : notes
+            updated.filePath   = filePath
             ProjectService.shared.updateInvoice(updated)
             onDone(updated)
         } else {
@@ -490,7 +532,8 @@ struct InvoiceEditorView: View {
                 status:     status,
                 issuedDate: issuedDate,
                 dueDate:    hasDueDate ? dueDate : nil,
-                notes:      notes.isEmpty ? nil : notes
+                notes:      notes.isEmpty ? nil : notes,
+                filePath:   filePath
             ) else { errorMsg = "Failed to save invoice."; return }
             onDone(created)
         }
