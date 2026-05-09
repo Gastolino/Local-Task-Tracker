@@ -185,7 +185,10 @@ struct DayDetailView: View {
 
     private var appTotals: [AppTotal] {
         var counts: [String: Int] = [:]
-        for a in activities where !a.isIdle, let app = a.appName { counts[app, default: 0] += 1 }
+        for a in activities where !a.isIdle {
+            guard let app = a.appName else { continue }
+            counts[app, default: 0] += 1
+        }
         return counts.map { AppTotal(id: $0.key, appName: $0.key, duration: Double($0.value) * 5) }
             .sorted { $0.duration > $1.duration }
     }
