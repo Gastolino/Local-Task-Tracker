@@ -98,7 +98,7 @@ final class DatabaseService {
             fmt.dateFormat = "yyyy-MM-dd"
             fmt.timeZone = .current
             while sqlite3_step(stmt) == SQLITE_ROW {
-                let day        = string(stmt, 0)
+                guard let day = string(stmt, 0) else { continue }
                 let active     = Int(sqlite3_column_int64(stmt, 1))
                 let idle       = Int(sqlite3_column_int64(stmt, 2))
                 let appsRaw    = string(stmt, 3) ?? ""
