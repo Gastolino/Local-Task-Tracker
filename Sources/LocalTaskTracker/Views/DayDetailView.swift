@@ -22,7 +22,6 @@ struct DayDetailView: View {
                     VStack(alignment: .leading, spacing: 28) {
                         appBars
                         if !daySessions.isEmpty { sessionsSection }
-                        if !screenshots.isEmpty { screenshotStrip }
                         timeline
                     }
                     .padding(20)
@@ -121,45 +120,55 @@ struct DayDetailView: View {
         }
     }
 
-    // MARK: - Screenshot strip
+    // MARK: - Timeline
 
-    private var screenshotStrip: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("SCREENSHOTS  (\(screenshots.count))")
+    private var timeline: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("TIMELINE")
                 .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(screenshots) { shot in
-                        ScreenshotThumbnail(record: shot)
-                            .environmentObject(appState)
-                            .onTapGesture { selectedShot = shot }
+            ForEach(appBlocks) { block in
+                timelineRow(block)
+            }
+        }
+    }
+
+    private func timelineRow(_ block: AppBlock) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(block.start, format: .dateTime.hour().minute())
+                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                .frame(width: 48, alignment: .trailing)
+                .padding(.top, 2)
+
+            RoundedRectangle(cornerRadius: 2)
+                .fill(block.appName.trackingColor)
+                .frame(width: 3, height: 22)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(block.appName).font(.subheadline).lineLimit(1)
+                    Spacer()
+                    Text(fmt(block.duration))
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                let blockShots = shots(in: block)
+                if !blockShots.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(blockShots) { shot in
+                                ScreenshotThumbnail(record: shot)
+                                    .environmentObject(appState)
+                                    .onTapGesture { selectedShot = shot }
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    // MARK: - Timeline
-
-    private var timeline: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("TIMELINE")
-                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            ForEach(appBlocks) { block in
-                HStack(spacing: 10) {
-                    Text(block.start, format: .dateTime.hour().minute())
-                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                        .frame(width: 48, alignment: .trailing)
-                    RoundedRectangle(cornerRadius: 4).fill(block.appName.trackingColor)
-                        .frame(width: 4)
-                        .frame(height: max(20, CGFloat(block.duration / 5) * 3))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(block.appName).font(.subheadline).lineLimit(1)
-                        Text(fmt(block.duration)).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
+    private func shots(in block: AppBlock) -> [ScreenshotRecord] {
+        screenshots.filter { $0.ts >= block.start && $0.ts <= block.end }
     }
 
     // MARK: - Empty
