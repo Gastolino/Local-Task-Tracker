@@ -18,7 +18,7 @@ struct AppLaunchPromptView: View {
                     .frame(width: 72, height: 72)
                 Image(systemName: "briefcase.fill")
                     .font(.system(size: 30))
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(Color.accentColor)
             }
             .scaleEffect(appear ? 1 : 0.6)
             .opacity(appear ? 1 : 0)
