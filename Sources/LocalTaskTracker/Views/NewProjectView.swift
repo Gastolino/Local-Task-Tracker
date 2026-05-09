@@ -7,13 +7,16 @@ struct NewProjectView: View {
 
     @Environment(\.dismiss) var dismiss
 
-    @State private var name        = ""
-    @State private var description = ""
-    @State private var color       = Project.presetColors[0]
-    @State private var error       = ""
+    @State private var name             = ""
+    @State private var description      = ""
+    @State private var color            = Project.presetColors[0]
+    @State private var deadlineEnabled  = false
+    @State private var deadline         = Date().addingTimeInterval(30 * 86400)
+    @State private var allocatedHoursText = ""
+    @State private var error            = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 22) {
 
             Text("New Project")
                 .font(.title2.bold())
@@ -55,6 +58,24 @@ struct NewProjectView: View {
                 }
             }
 
+            // Scope fields
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    label("Allocated Hours")
+                    TextField("e.g. 40", text: $allocatedHoursText)
+                        .textFieldStyle(.roundedBorder)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Set Deadline", isOn: $deadlineEnabled)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    if deadlineEnabled {
+                        DatePicker("", selection: $deadline, displayedComponents: .date)
+                            .labelsHidden()
+                    }
+                }
+            }
+
             if !error.isEmpty {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
@@ -73,7 +94,7 @@ struct NewProjectView: View {
             }
         }
         .padding(28)
-        .frame(width: 400, height: 380)
+        .frame(width: 420, height: 440)
     }
 
     private func create() {
@@ -82,7 +103,9 @@ struct NewProjectView: View {
         guard let project = ProjectService.shared.createProject(
             name: trimmed,
             color: color,
-            description: description.isEmpty ? nil : description
+            description: description.isEmpty ? nil : description,
+            deadline: deadlineEnabled ? deadline : nil,
+            allocatedHours: Double(allocatedHoursText.trimmingCharacters(in: .whitespaces))
         ) else {
             error = "Failed to save — try a different name."
             return

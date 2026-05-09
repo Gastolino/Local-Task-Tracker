@@ -3,7 +3,7 @@ import SQLite3
 
 private let _SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-/// All project / session / note CRUD and time-stat queries.
+/// All project / session / note / invoice / offer CRUD and time-stat queries.
 /// Opens its own WAL-mode connection to the shared DB — safe alongside
 /// DatabaseService because SQLite WAL allows concurrent readers.
 final class ProjectService {
@@ -45,6 +45,32 @@ final class ProjectService {
             updated_at  TEXT    NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_notes_project ON project_notes(project_id);
+
+        CREATE TABLE IF NOT EXISTS invoices (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            number      TEXT    NOT NULL,
+            amount      REAL    NOT NULL DEFAULT 0,
+            currency    TEXT    NOT NULL DEFAULT 'USD',
+            status      TEXT    NOT NULL DEFAULT 'draft',
+            issued_date TEXT    NOT NULL,
+            due_date    TEXT,
+            notes       TEXT,
+            created_at  TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_invoices_project ON invoices(project_id);
+        CREATE INDEX IF NOT EXISTS idx_invoices_due     ON invoices(due_date);
+
+        CREATE TABLE IF NOT EXISTS offers (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id  INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+            title       TEXT    NOT NULL,
+            amount      REAL,
+            currency    TEXT    NOT NULL DEFAULT 'USD',
+            file_path   TEXT,
+            created_at  TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_offers_project ON offers(project_id);
         """
 
     // MARK: - Connection
@@ -55,6 +81,9 @@ final class ProjectService {
         exec("PRAGMA synchronous=NORMAL")
         exec("PRAGMA foreign_keys=ON")
         exec(Self.schema)
+        // Migrations: add new columns to projects (ignored if they already exist)
+        sqlite3_exec(db, "ALTER TABLE projects ADD COLUMN deadline TEXT",        nil, nil, nil)
+        sqlite3_exec(db, "ALTER TABLE projects ADD COLUMN allocated_hours REAL", nil, nil, nil)
     }
 
     deinit { sqlite3_close(db) }
@@ -63,7 +92,7 @@ final class ProjectService {
 
     func allProjects(includeArchived: Bool = false) -> [Project] {
         let filter = includeArchived ? "" : "WHERE archived=0"
-        let sql = "SELECT id,name,color,description,created_at,archived " +
+        let sql = "SELECT id,name,color,description,created_at,archived,deadline,allocated_hours " +
                   "FROM projects \(filter) ORDER BY name COLLATE NOCASE"
         var results: [Project] = []
         withStatement(sql) { stmt in
@@ -75,24 +104,39 @@ final class ProjectService {
     }
 
     @discardableResult
-    func createProject(name: String, color: String, description: String?) -> Project? {
+    func createProject(
+        name: String,
+        color: String,
+        description: String?,
+        deadline: Date? = nil,
+        allocatedHours: Double? = nil
+    ) -> Project? {
         let now = iso(Date())
-        let sql = "INSERT INTO projects (name,color,description,created_at) VALUES (?,?,?,?)"
-        guard exec(sql, name, color, description ?? NSNull(), now),
+        let sql = """
+            INSERT INTO projects (name,color,description,created_at,deadline,allocated_hours)
+            VALUES (?,?,?,?,?,?)
+            """
+        guard exec(sql,
+                   name, color, description ?? NSNull(), now,
+                   deadline.map { iso($0) } ?? NSNull(),
+                   dblArg(allocatedHours)),
               let id = lastInsertID()
         else { return nil }
         return Project(
             id: Int(id), name: name, color: color,
-            description: description, createdAt: Date(), isArchived: false
+            description: description, createdAt: Date(), isArchived: false,
+            deadline: deadline, allocatedHours: allocatedHours
         )
     }
 
     func updateProject(_ project: Project) {
         exec(
-            "UPDATE projects SET name=?,color=?,description=?,archived=? WHERE id=?",
+            "UPDATE projects SET name=?,color=?,description=?,archived=?,deadline=?,allocated_hours=? WHERE id=?",
             project.name, project.color,
             project.description ?? NSNull(),
             project.isArchived ? 1 : 0,
+            project.deadline.map { iso($0) } ?? NSNull(),
+            dblArg(project.allocatedHours),
             project.id
         )
     }
@@ -152,7 +196,6 @@ final class ProjectService {
               let id = lastInsertID()
         else { return nil }
 
-        // Fetch the joined row so we have the project name/color.
         let rows = querySessions(
             "SELECT s.id,s.project_id,p.name,p.color,s.label,s.started_at,s.ended_at,s.notes,s.created_at " +
             "FROM sessions s JOIN projects p ON p.id=s.project_id WHERE s.id=\(id)"
@@ -223,6 +266,139 @@ final class ProjectService {
         exec("DELETE FROM project_notes WHERE id=?", id)
     }
 
+    // MARK: - Invoices
+
+    func allInvoices() -> [Invoice] {
+        let sql = """
+            SELECT i.id, i.project_id, p.name, p.color,
+                   i.number, i.amount, i.currency, i.status,
+                   i.issued_date, i.due_date, i.notes, i.created_at
+            FROM invoices i JOIN projects p ON p.id=i.project_id
+            ORDER BY i.due_date ASC, i.issued_date DESC
+            """
+        return queryInvoices(sql)
+    }
+
+    func invoices(forProject projectID: Int) -> [Invoice] {
+        let sql = """
+            SELECT i.id, i.project_id, p.name, p.color,
+                   i.number, i.amount, i.currency, i.status,
+                   i.issued_date, i.due_date, i.notes, i.created_at
+            FROM invoices i JOIN projects p ON p.id=i.project_id
+            WHERE i.project_id=?
+            ORDER BY i.issued_date DESC
+            """
+        return queryInvoices(sql, projectID)
+    }
+
+    @discardableResult
+    func createInvoice(
+        projectID: Int,
+        number: String,
+        amount: Double,
+        currency: String,
+        status: InvoiceStatus,
+        issuedDate: Date,
+        dueDate: Date?,
+        notes: String?
+    ) -> Invoice? {
+        let now = iso(Date())
+        let sql = """
+            INSERT INTO invoices
+                (project_id,number,amount,currency,status,issued_date,due_date,notes,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?)
+            """
+        guard exec(sql,
+                   projectID, number, amount, currency, status.rawValue,
+                   iso(issuedDate), dueDate.map { iso($0) } ?? NSNull(),
+                   notes ?? NSNull(), now),
+              let id = lastInsertID()
+        else { return nil }
+        let rows = queryInvoices("""
+            SELECT i.id, i.project_id, p.name, p.color,
+                   i.number, i.amount, i.currency, i.status,
+                   i.issued_date, i.due_date, i.notes, i.created_at
+            FROM invoices i JOIN projects p ON p.id=i.project_id
+            WHERE i.id=\(id)
+            """)
+        return rows.first
+    }
+
+    func updateInvoice(_ invoice: Invoice) {
+        exec(
+            "UPDATE invoices SET number=?,amount=?,currency=?,status=?,issued_date=?,due_date=?,notes=? WHERE id=?",
+            invoice.number, invoice.amount, invoice.currency, invoice.status.rawValue,
+            iso(invoice.issuedDate), invoice.dueDate.map { iso($0) } ?? NSNull(),
+            invoice.notes ?? NSNull(), invoice.id
+        )
+    }
+
+    func deleteInvoice(_ id: Int) {
+        exec("DELETE FROM invoices WHERE id=?", id)
+    }
+
+    // MARK: - Offers
+
+    func allOffers() -> [Offer] {
+        let sql = """
+            SELECT o.id, o.project_id, p.name, p.color,
+                   o.title, o.amount, o.currency, o.file_path, o.created_at
+            FROM offers o JOIN projects p ON p.id=o.project_id
+            ORDER BY o.created_at DESC
+            """
+        return queryOffers(sql)
+    }
+
+    func offers(forProject projectID: Int) -> [Offer] {
+        let sql = """
+            SELECT o.id, o.project_id, p.name, p.color,
+                   o.title, o.amount, o.currency, o.file_path, o.created_at
+            FROM offers o JOIN projects p ON p.id=o.project_id
+            WHERE o.project_id=?
+            ORDER BY o.created_at DESC
+            """
+        return queryOffers(sql, projectID)
+    }
+
+    @discardableResult
+    func createOffer(
+        projectID: Int,
+        title: String,
+        amount: Double?,
+        currency: String,
+        filePath: String?
+    ) -> Offer? {
+        let now = iso(Date())
+        let sql = """
+            INSERT INTO offers (project_id,title,amount,currency,file_path,created_at)
+            VALUES (?,?,?,?,?,?)
+            """
+        guard exec(sql,
+                   projectID, title, dblArg(amount),
+                   currency, filePath ?? NSNull(), now),
+              let id = lastInsertID()
+        else { return nil }
+        let rows = queryOffers("""
+            SELECT o.id, o.project_id, p.name, p.color,
+                   o.title, o.amount, o.currency, o.file_path, o.created_at
+            FROM offers o JOIN projects p ON p.id=o.project_id
+            WHERE o.id=\(id)
+            """)
+        return rows.first
+    }
+
+    func updateOffer(_ offer: Offer) {
+        exec(
+            "UPDATE offers SET title=?,amount=?,currency=?,file_path=? WHERE id=?",
+            offer.title, dblArg(offer.amount), offer.currency,
+            offer.filePath ?? NSNull(), offer.id
+        )
+    }
+
+    func deleteOffer(_ id: Int) {
+        exec("DELETE FROM offers WHERE id=?", id)
+    }
+
     // MARK: - Stats
 
     func stats(forProject projectID: Int) -> ProjectStats {
@@ -275,6 +451,87 @@ final class ProjectService {
         )
     }
 
+    // MARK: - Row mappers
+
+    private func projectFromRow(_ stmt: OpaquePointer?) -> Project {
+        Project(
+            id:             Int(sqlite3_column_int64(stmt, 0)),
+            name:           str(stmt, 1) ?? "",
+            color:          str(stmt, 2) ?? "#5856D6",
+            description:    str(stmt, 3),
+            createdAt:      isoDate(str(stmt, 4) ?? "") ?? Date(),
+            isArchived:     sqlite3_column_int64(stmt, 5) != 0,
+            deadline:       str(stmt, 6).flatMap { isoDate($0) },
+            allocatedHours: sqlite3_column_type(stmt, 7) != SQLITE_NULL
+                            ? sqlite3_column_double(stmt, 7) : nil
+        )
+    }
+
+    private func queryInvoices(_ sql: String, _ arg: Any? = nil) -> [Invoice] {
+        var results: [Invoice] = []
+        withStatement(sql, arg) { stmt in
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let statusRaw = str(stmt, 7) ?? "draft"
+                results.append(Invoice(
+                    id:           Int(sqlite3_column_int64(stmt, 0)),
+                    projectID:    Int(sqlite3_column_int64(stmt, 1)),
+                    projectName:  str(stmt, 2) ?? "",
+                    projectColor: str(stmt, 3) ?? "#5856D6",
+                    number:       str(stmt, 4) ?? "",
+                    amount:       sqlite3_column_double(stmt, 5),
+                    currency:     str(stmt, 6) ?? "USD",
+                    status:       InvoiceStatus(rawValue: statusRaw) ?? .draft,
+                    issuedDate:   isoDate(str(stmt, 8) ?? "") ?? Date(),
+                    dueDate:      str(stmt, 9).flatMap { isoDate($0) },
+                    notes:        str(stmt, 10),
+                    createdAt:    isoDate(str(stmt, 11) ?? "") ?? Date()
+                ))
+            }
+        }
+        return results
+    }
+
+    private func queryOffers(_ sql: String, _ arg: Any? = nil) -> [Offer] {
+        var results: [Offer] = []
+        withStatement(sql, arg) { stmt in
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                results.append(Offer(
+                    id:           Int(sqlite3_column_int64(stmt, 0)),
+                    projectID:    Int(sqlite3_column_int64(stmt, 1)),
+                    projectName:  str(stmt, 2) ?? "",
+                    projectColor: str(stmt, 3) ?? "#5856D6",
+                    title:        str(stmt, 4) ?? "",
+                    amount:       sqlite3_column_type(stmt, 5) != SQLITE_NULL
+                                  ? sqlite3_column_double(stmt, 5) : nil,
+                    currency:     str(stmt, 6) ?? "USD",
+                    filePath:     str(stmt, 7),
+                    createdAt:    isoDate(str(stmt, 8) ?? "") ?? Date()
+                ))
+            }
+        }
+        return results
+    }
+
+    private func querySessions(_ sql: String, _ arg: Any? = nil) -> [Session] {
+        var results: [Session] = []
+        withStatement(sql, arg) { stmt in
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                results.append(Session(
+                    id:           Int(sqlite3_column_int64(stmt, 0)),
+                    projectID:    Int(sqlite3_column_int64(stmt, 1)),
+                    projectName:  str(stmt, 2) ?? "",
+                    projectColor: str(stmt, 3) ?? "#5856D6",
+                    label:        str(stmt, 4),
+                    startedAt:    isoDate(str(stmt, 5) ?? "") ?? Date(),
+                    endedAt:      str(stmt, 6).flatMap { isoDate($0) },
+                    notes:        str(stmt, 7),
+                    createdAt:    isoDate(str(stmt, 8) ?? "") ?? Date()
+                ))
+            }
+        }
+        return results
+    }
+
     // MARK: - Raw helpers
 
     @discardableResult
@@ -301,7 +558,7 @@ final class ProjectService {
         defer { sqlite3_finalize(stmt) }
         if let a = arg {
             switch a {
-            case let n as Int: sqlite3_bind_int64(stmt, 1, Int64(n))
+            case let n as Int:    sqlite3_bind_int64(stmt, 1, Int64(n))
             case let s as String: sqlite3_bind_text(stmt, 1, s, -1, _SQLITE_TRANSIENT)
             default: break
             }
@@ -318,35 +575,9 @@ final class ProjectService {
         sqlite3_column_text(stmt, col).map { String(cString: $0) }
     }
 
-    private func querySessions(_ sql: String, _ arg: Any? = nil) -> [Session] {
-        var results: [Session] = []
-        withStatement(sql, arg) { stmt in
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                results.append(Session(
-                    id:           Int(sqlite3_column_int64(stmt, 0)),
-                    projectID:    Int(sqlite3_column_int64(stmt, 1)),
-                    projectName:  str(stmt, 2) ?? "",
-                    projectColor: str(stmt, 3) ?? "#5856D6",
-                    label:        str(stmt, 4),
-                    startedAt:    isoDate(str(stmt, 5) ?? "") ?? Date(),
-                    endedAt:      str(stmt, 6).flatMap { isoDate($0) },
-                    notes:        str(stmt, 7),
-                    createdAt:    isoDate(str(stmt, 8) ?? "") ?? Date()
-                ))
-            }
-        }
-        return results
-    }
-
-    private func projectFromRow(_ stmt: OpaquePointer?) -> Project {
-        Project(
-            id:          Int(sqlite3_column_int64(stmt, 0)),
-            name:        str(stmt, 1) ?? "",
-            color:       str(stmt, 2) ?? "#5856D6",
-            description: str(stmt, 3),
-            createdAt:   isoDate(str(stmt, 4) ?? "") ?? Date(),
-            isArchived:  sqlite3_column_int64(stmt, 5) != 0
-        )
+    private func dblArg(_ value: Double?) -> Any {
+        guard let value = value else { return NSNull() }
+        return value
     }
 
     // MARK: - Date helpers

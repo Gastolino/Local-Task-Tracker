@@ -9,6 +9,8 @@ struct Project: Identifiable, Hashable {
     var description: String?
     let createdAt: Date
     var isArchived: Bool
+    var deadline: Date?
+    var allocatedHours: Double?
 
     static let presetColors: [String] = [
         "#5856D6", "#007AFF", "#34C759", "#FF9500",
@@ -54,4 +56,58 @@ struct ProjectStats {
     let thisWeekSeconds: TimeInterval
     let todaySeconds: TimeInterval
     let sessionCount: Int
+}
+
+// MARK: - Invoice
+
+enum InvoiceStatus: String, CaseIterable {
+    case draft          = "draft"
+    case sent           = "sent"
+    case pendingPayment = "pending_payment"
+    case paid           = "paid"
+    case cancelled      = "cancelled"
+
+    var label: String {
+        switch self {
+        case .draft:          return "Draft"
+        case .sent:           return "Sent"
+        case .pendingPayment: return "Pending"
+        case .paid:           return "Paid"
+        case .cancelled:      return "Cancelled"
+        }
+    }
+}
+
+struct Invoice: Identifiable {
+    let id: Int
+    let projectID: Int
+    var projectName: String
+    var projectColor: String
+    var number: String
+    var amount: Double
+    var currency: String
+    var status: InvoiceStatus
+    var issuedDate: Date
+    var dueDate: Date?
+    var notes: String?
+    let createdAt: Date
+
+    var isOverdue: Bool {
+        guard let due = dueDate else { return false }
+        return status != .paid && status != .cancelled && due < Date()
+    }
+}
+
+// MARK: - Offer
+
+struct Offer: Identifiable {
+    let id: Int
+    let projectID: Int
+    var projectName: String
+    var projectColor: String
+    var title: String
+    var amount: Double?
+    var currency: String
+    var filePath: String?
+    let createdAt: Date
 }

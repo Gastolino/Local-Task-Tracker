@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - App tabs
 
 enum AppTab: Hashable {
-    case calendar, projects
+    case calendar, projects, billing
 }
 
 // MARK: - ContentView
@@ -58,6 +58,7 @@ struct ContentView: View {
             // Tab switcher
             tabButton(.calendar, "Calendar", "calendar")
             tabButton(.projects, "Projects", "folder.fill")
+            tabButton(.billing,  "Billing",  "doc.text.fill")
 
             Spacer()
 
@@ -87,6 +88,7 @@ struct ContentView: View {
         switch tab {
         case .calendar: CalendarView()
         case .projects: ProjectsView()
+        case .billing:  BillingView()
         }
     }
 

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Detail view for a single project: stats header, sessions list, project notes.
+/// Detail view for a single project: stats header, scope, sessions list, project notes.
 struct ProjectDetailView: View {
 
     var project: Project
@@ -19,6 +19,9 @@ struct ProjectDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 statsHeader
+                if project.allocatedHours != nil || project.deadline != nil {
+                    scopeSection
+                }
                 sessionsSection
                 notesSection
             }
@@ -64,6 +67,68 @@ struct ProjectDetailView: View {
             Text(title).font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Scope section
+
+    @ViewBuilder
+    private var scopeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("SCOPE")
+                .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+
+            if let allocated = project.allocatedHours, allocated > 0 {
+                let actual   = stats.totalSeconds / 3600
+                let fraction = min(actual / allocated, 1.0)
+                let isOver   = actual > allocated
+
+                GeometryReader { geo in
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.primary.opacity(0.08))
+                        .overlay(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(isOver ? Color.red : Color.accentColor)
+                                .frame(width: geo.size.width * fraction)
+                        }
+                }
+                .frame(height: 6)
+
+                HStack {
+                    Text(String(format: "%.1fh tracked", actual))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    if isOver {
+                        Text(String(format: "+%.1fh over scope (%.0fh allocated)", actual - allocated, allocated))
+                            .font(.caption).foregroundStyle(.red)
+                    } else {
+                        Text(String(format: "%.1fh remaining (%.0fh allocated)", allocated - actual, allocated))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if let deadline = project.deadline {
+                let days = Calendar.current.dateComponents(
+                    [.day],
+                    from: Calendar.current.startOfDay(for: Date()),
+                    to:   Calendar.current.startOfDay(for: deadline)
+                ).day ?? 0
+                HStack(spacing: 6) {
+                    Text("Deadline")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(deadline, format: .dateTime.day().month(.abbreviated).year())
+                        .font(.caption.weight(.medium))
+                    Spacer()
+                    if days < 0 {
+                        Text("\(-days)d overdue").font(.caption).foregroundStyle(.red)
+                    } else if days == 0 {
+                        Text("Due today").font(.caption).foregroundStyle(.orange)
+                    } else {
+                        Text("\(days)d left").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Sessions
@@ -295,12 +360,15 @@ struct EditProjectView: View {
     var onSaved: (Project) -> Void
 
     @Environment(\.dismiss) var dismiss
-    @State private var name        = ""
-    @State private var description = ""
-    @State private var color       = ""
+    @State private var name               = ""
+    @State private var description        = ""
+    @State private var color              = ""
+    @State private var deadlineEnabled    = false
+    @State private var deadline           = Date().addingTimeInterval(30 * 86400)
+    @State private var allocatedHoursText = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 20) {
             Text("Edit Project").font(.title2.bold())
 
             TextField("Project name", text: $name).textFieldStyle(.roundedBorder)
@@ -322,30 +390,56 @@ struct EditProjectView: View {
                 }
             }
 
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Allocated Hours").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                    TextField("e.g. 40", text: $allocatedHoursText)
+                        .textFieldStyle(.roundedBorder)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Deadline", isOn: $deadlineEnabled)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    if deadlineEnabled {
+                        DatePicker("", selection: $deadline, displayedComponents: .date)
+                            .labelsHidden()
+                    }
+                }
+            }
+
             Spacer()
             HStack {
                 Button("Cancel") { dismiss() }.buttonStyle(.bordered).keyboardShortcut(.escape)
                 Spacer()
-                Button("Save") {
-                    var updated = project
-                    updated.name        = name
-                    updated.color       = color
-                    updated.description = description.isEmpty ? nil : description
-                    ProjectService.shared.updateProject(updated)
-                    onSaved(updated)
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-                .keyboardShortcut(.return)
+                Button("Save") { save() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .keyboardShortcut(.return)
             }
         }
         .padding(28)
-        .frame(width: 380, height: 320)
+        .frame(width: 420, height: 400)
         .onAppear {
             name        = project.name
             description = project.description ?? ""
             color       = project.color
+            allocatedHoursText = project.allocatedHours.map { String(format: "%.0f", $0) } ?? ""
+            if let d = project.deadline {
+                deadlineEnabled = true
+                deadline        = d
+            }
         }
+    }
+
+    private func save() {
+        var updated = project
+        updated.name           = name.trimmingCharacters(in: .whitespaces)
+        updated.color          = color
+        updated.description    = description.isEmpty ? nil : description
+        updated.deadline       = deadlineEnabled ? deadline : nil
+        updated.allocatedHours = Double(allocatedHoursText.trimmingCharacters(in: .whitespaces))
+        ProjectService.shared.updateProject(updated)
+        onSaved(updated)
+        dismiss()
     }
 }
