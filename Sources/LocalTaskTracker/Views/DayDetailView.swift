@@ -162,8 +162,10 @@ struct DayDetailView: View {
                             }
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -234,16 +236,16 @@ struct ScreenshotThumbnail: View {
     @State private var image: NSImage?
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 3) {
             ZStack {
-                RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.12)).frame(width: 120, height: 78)
+                RoundedRectangle(cornerRadius: 5).fill(Color.gray.opacity(0.12)).frame(width: 96, height: 62)
                 if let img = image {
                     Image(nsImage: img).resizable().scaledToFill()
-                        .frame(width: 120, height: 78).clipped().cornerRadius(6)
-                } else { ProgressView().scaleEffect(0.6) }
+                        .frame(width: 96, height: 62).clipped().cornerRadius(5)
+                } else { ProgressView().scaleEffect(0.5) }
             }
             Text(record.ts, format: .dateTime.hour().minute())
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.caption2).foregroundStyle(.tertiary)
         }
         .task { await load() }
     }
