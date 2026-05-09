@@ -1,6 +1,8 @@
 import Foundation
 import SQLite3
 
+private let __SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
 /// All project / session / note CRUD and time-stat queries.
 /// Opens its own WAL-mode connection to the shared DB — safe alongside
 /// DatabaseService because SQLite WAL allows concurrent readers.
@@ -283,7 +285,7 @@ final class ProjectService {
         for (i, arg) in args.enumerated() {
             let col = Int32(i + 1)
             switch arg {
-            case let s as String:   sqlite3_bind_text(stmt, col, s, -1, SQLITE_TRANSIENT)
+            case let s as String:   sqlite3_bind_text(stmt, col, s, -1, _SQLITE_TRANSIENT)
             case let n as Int:      sqlite3_bind_int64(stmt, col, Int64(n))
             case let d as Double:   sqlite3_bind_double(stmt, col, d)
             case is NSNull:         sqlite3_bind_null(stmt, col)
@@ -300,7 +302,7 @@ final class ProjectService {
         if let a = arg {
             switch a {
             case let n as Int: sqlite3_bind_int64(stmt, 1, Int64(n))
-            case let s as String: sqlite3_bind_text(stmt, 1, s, -1, SQLITE_TRANSIENT)
+            case let s as String: sqlite3_bind_text(stmt, 1, s, -1, _SQLITE_TRANSIENT)
             default: break
             }
         }
