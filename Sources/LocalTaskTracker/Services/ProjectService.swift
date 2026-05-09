@@ -1,7 +1,7 @@
 import Foundation
 import SQLite3
 
-private let __SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+private let _SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 /// All project / session / note CRUD and time-stat queries.
 /// Opens its own WAL-mode connection to the shared DB — safe alongside
